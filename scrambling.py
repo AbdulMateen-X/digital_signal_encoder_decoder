@@ -1,46 +1,26 @@
 
+
 def b8zs(bits, initial_pulse=-1):
-    """
-    B8ZS scrambling.
-
-    Each run of eight zeros is replaced with:
-        000VB0VB
-
-    V = bipolar violation: same polarity as the preceding pulse.
-    B = normal bipolar pulse: opposite polarity to the preceding pulse.
-
-    initial_pulse is the polarity of the pulse immediately before
-    the input sequence. It defaults to -1, so the first normal
-    AMI mark has polarity +1.
-    """
-    if not bits:
-        raise ValueError("Input bit sequence cannot be empty.")
-
+    """Encode bits using AMI with B8ZS substitution."""
     if any(bit not in (0, 1) for bit in bits):
-        raise ValueError("Input must contain only 0 and 1.")
-
-    if initial_pulse not in (-1, 1):
-        raise ValueError("initial_pulse must be +1 or -1.")
+        raise ValueError("Bits must contain only 0 and 1.")
 
     encoded = []
     last_pulse = initial_pulse
     i = 0
 
     while i < len(bits):
+        # Replace a run of eight zeros.
         if bits[i:i + 8] == [0] * 8:
             p = last_pulse
-
-            # 000VB0VB, with polarity determined by the previous pulse.
-            encoded.extend([0, 0, 0, p, -p, 0, -p, p])
-
-            # The final B pulse has polarity p.
-            last_pulse = p
+            encoded.extend([0, 0, 0, p, -p, 0, p, -p])
+            last_pulse = -p
             i += 8
         elif bits[i] == 0:
             encoded.append(0)
             i += 1
         else:
-            last_pulse *= -1
+            last_pulse = -last_pulse
             encoded.append(last_pulse)
             i += 1
 

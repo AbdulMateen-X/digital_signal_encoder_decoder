@@ -15,7 +15,6 @@ from line_coding import (
 )
 
 from scrambling import b8zs, hdb3
-
 from visualization import plot_line_code
 
 from pcm import (
@@ -25,6 +24,12 @@ from pcm import (
     plot_pcm,
 )
 
+from decoding import decode_line_code
+
+
+# ---------------------------------------------------------
+# Digital data generation
+# ---------------------------------------------------------
 
 def generate_data():
     print("\n--- Digital Data Generator ---")
@@ -84,6 +89,101 @@ def read_bits():
     return generate_random_bits(length)
 
 
+# ---------------------------------------------------------
+# Decoder helpers
+# ---------------------------------------------------------
+
+def decode_prompt(scheme_name, encoded):
+    """Ask whether the user wants to decode the encoded signal."""
+
+    answer = input(
+        "\nDo you want to decode this signal? (y/n): "
+    ).strip().lower()
+
+    if answer not in ("y", "yes"):
+        if answer not in ("n", "no"):
+            print("Invalid response; skipping decoding.")
+        return
+
+    try:
+        decoded = decode_line_code(scheme_name, encoded)
+
+        print("\n--- Decoding Results ---")
+        print("Encoded levels:", encoded)
+        print("Decoded bitstream:", bits_to_string(decoded))
+
+        print(
+            "Decoded stream matches original:",
+            decoded == getattr(decode_prompt, "_original_bits", []),
+        )
+
+    except (ValueError, TypeError) as error:
+        print("Decoding error:", error)
+
+
+def decode_received_signal():
+    """
+    Decode manually supplied signal levels.
+    The original bitstream is not requested or used.
+    """
+
+    schemes = [
+        "NRZ-L",
+        "NRZ-I",
+        "Manchester",
+        "Differential Manchester",
+        "AMI",
+        "B8ZS",
+        "HDB3",
+    ]
+
+    print("\n--- Decode a Received Signal ---")
+
+    for index, scheme in enumerate(schemes, start=1):
+        print(f"{index}. {scheme}")
+
+    choice = input("Choose a coding scheme (1-7): ").strip()
+
+    if not choice.isdigit() or not 1 <= int(choice) <= len(schemes):
+        print("Invalid choice.")
+        return
+
+    scheme_name = schemes[int(choice) - 1]
+
+    raw = input(
+        "Enter encoded signal levels separated by spaces "
+        "(-1, 0, 1): "
+    ).strip()
+
+    try:
+        encoded = [int(value) for value in raw.split()]
+
+        if not encoded:
+            raise ValueError("Signal cannot be empty.")
+
+        if any(level not in (-1, 0, 1) for level in encoded):
+            raise ValueError("Levels must be -1, 0, or 1.")
+
+        decoded = decode_line_code(scheme_name, encoded)
+
+        print("\n--- Decoding Results ---")
+        print("Scheme:", scheme_name)
+        print("Encoded levels:", encoded)
+        print("Decoded bitstream:", bits_to_string(decoded))
+
+        palindrome = longest_palindrome(decoded)
+        print("Longest palindrome:", bits_to_string(palindrome))
+
+    except (ValueError, TypeError) as error:
+        print("Decoding error:", error)
+
+
+# ---------------------------------------------------------
+# Line coding
+# ---------------------------------------------------------
+
+
+
 def line_coding_menu(bits=None):
     schemes = {
         "1": ("NRZ-L", nrz_l),
@@ -91,8 +191,6 @@ def line_coding_menu(bits=None):
         "3": ("Manchester", manchester),
         "4": ("Differential Manchester", differential_manchester),
         "5": ("AMI", ami),
-        "6": ("B8ZS", b8zs),
-        "7": ("HDB3", hdb3),
     }
 
     print("\n--- Line Coding ---")
@@ -101,10 +199,8 @@ def line_coding_menu(bits=None):
     print("3. Manchester")
     print("4. Differential Manchester")
     print("5. AMI")
-    print("6. B8ZS")
-    print("7. HDB3")
 
-    choice = input("Choose a scheme (1-7): ").strip()
+    choice = input("Choose a scheme (1-5): ").strip()
 
     if choice not in schemes:
         print("Invalid choice.")
@@ -115,6 +211,35 @@ def line_coding_menu(bits=None):
             bits = read_bits()
 
         scheme_name, encoder = schemes[choice]
+
+        if scheme_name == "AMI":
+            scramble_choice = input(
+                "Do you want scrambling? (y/n): "
+            ).strip().lower()
+
+            if scramble_choice in ("y", "yes"):
+                print("\n--- Scrambling Schemes ---")
+                print("1. B8ZS")
+                print("2. HDB3")
+
+                scramble_type = input(
+                    "Choose a scrambling scheme (1-2): "
+                ).strip()
+
+                if scramble_type == "1":
+                    scheme_name = "B8ZS"
+                    encoder = b8zs
+                elif scramble_type == "2":
+                    scheme_name = "HDB3"
+                    encoder = hdb3
+                else:
+                    print("Invalid scrambling choice.")
+                    return
+
+            elif scramble_choice not in ("n", "no"):
+                print("Invalid choice. Enter y or n.")
+                return
+
         encoded = encoder(bits)
 
         print("\nOriginal bits:", bits_to_string(bits))
@@ -123,11 +248,17 @@ def line_coding_menu(bits=None):
 
         plot_line_code(bits, encoded, scheme_name)
 
-        # Decoder interaction will be added in the decoder step.
+        # Ask whether the user wants to decode the encoded signal.
+        decode_prompt(scheme_name, encoded)
 
-    except ValueError as error:
+    except (ValueError, TypeError) as error:
         print("Input error:", error)
 
+
+
+# ---------------------------------------------------------
+# Digital input workflow
+# ---------------------------------------------------------
 
 def digital_input_workflow():
     print("\n--- Digital Input ---")
@@ -141,6 +272,7 @@ def digital_input_workflow():
             bits = generate_data()
             if bits is None:
                 return
+
         elif choice == "2":
             bits = read_bits()
             palindrome = longest_palindrome(bits)
@@ -148,6 +280,7 @@ def digital_input_workflow():
             print("\nDigital stream:", bits_to_string(bits))
             print("Longest palindrome:", bits_to_string(palindrome))
             print("Palindrome length:", len(palindrome))
+
         else:
             print("Invalid choice.")
             return
@@ -157,6 +290,10 @@ def digital_input_workflow():
     except ValueError as error:
         print("Input error:", error)
 
+
+# ---------------------------------------------------------
+# Analog input and PCM
+# ---------------------------------------------------------
 
 def analog_input_workflow():
     print("\n--- Analog Input: PCM ---")
@@ -169,8 +306,10 @@ def analog_input_workflow():
 
         if num_samples < 2:
             raise ValueError("Number of samples must be at least 2.")
+
         if frequency <= 0 or duration <= 0:
             raise ValueError("Frequency and duration must be positive.")
+
         if not 1 <= bits_per_sample <= 8:
             raise ValueError("Bits per sample must be between 1 and 8.")
 
@@ -215,33 +354,44 @@ def analog_input_workflow():
             "\nPass PCM-generated bits to line coding? (y/n): "
         ).strip().lower()
 
-        if choice == "y":
+        if choice in ("y", "yes"):
             line_coding_menu(bitstream)
-        elif choice != "n":
+        elif choice not in ("n", "no"):
             print("Invalid choice; returning to the main menu.")
 
-    except ValueError as error:
+    except (ValueError, TypeError) as error:
         print("Input error:", error)
 
+
+# ---------------------------------------------------------
+# Main application
+# ---------------------------------------------------------
 
 def main():
     while True:
         print("\n=== Digital Signal Encoder and Decoder ===")
         print("1. Digital input")
         print("2. Analog input (PCM)")
-        print("3. Exit")
+        print("3. Decode a received encoded signal")
+        print("4. Exit")
 
-        choice = input("Choose input type: ").strip()
+        choice = input("Choose an option: ").strip()
 
         if choice == "1":
             digital_input_workflow()
+
         elif choice == "2":
             analog_input_workflow()
+
         elif choice == "3":
+            decode_received_signal()
+
+        elif choice == "4":
             print("Exiting program.")
             break
+
         else:
-            print("Invalid choice. Please select 1, 2, or 3.")
+            print("Invalid choice. Please select 1, 2, 3, or 4.")
 
 
 if __name__ == "__main__":
